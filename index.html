@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Blockwerk</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon.png"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+/* lock screen of the password-protected alpha: everything else on this site is AES-GCM encrypted */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#140b2e;color:#fff;font-family:Nunito,system-ui,sans-serif}
+body{display:grid;place-items:center;padding:24px;background:radial-gradient(120% 80% at 50% 0%,#3a2380 0%,#1b0f3f 55%,#0e0824 100%)}
+.box{width:min(360px,100%);text-align:center}
+.blocks{display:flex;justify-content:center;gap:6px;margin-bottom:14px}
+.blocks i{width:30px;height:30px;border-radius:8px;box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),inset 0 3px 0 rgba(255,255,255,.35)}
+h1{font-family:'Dela Gothic One',system-ui,sans-serif;font-weight:400;font-size:clamp(28px,9.5vw,48px);white-space:nowrap;margin:0;letter-spacing:.015em;text-shadow:0 5px 0 #2b1d70,0 12px 30px rgba(0,0,0,.45)}
+.sub{margin:6px 0 22px;color:#b9acef;font-weight:800;font-size:14px}
+.card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px}
+input[type=password]{width:100%;font:inherit;font-size:17px;padding:14px 16px;border-radius:14px;border:2px solid rgba(255,255,255,.18);background:rgba(0,0,0,.28);color:#fff;outline:none;text-align:center}
+input[type=password]:focus{border-color:#ffd36a}
+label{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px 0;font-weight:800;font-size:14px;color:#ddd5ff}
+label input{width:20px;height:20px;accent-color:#ffb21e}
+button{width:100%;font:inherit;font-family:'Dela Gothic One',system-ui,sans-serif;font-size:20px;padding:14px;border:0;border-radius:18px;color:#4a2a00;background:linear-gradient(180deg,#ffe07a,#ffb21e);box-shadow:0 6px 0 #c77a00,0 12px 24px rgba(0,0,0,.35);cursor:pointer}
+button:disabled{opacity:.6}
+.err{min-height:20px;margin-top:12px;color:#ff8aa0;font-weight:800;font-size:14px}
+.shake{animation:sh .35s}
+@keyframes sh{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+</style>
+</head>
+<body>
+<form class="box" id="f" autocomplete="on">
+  <div class="blocks"><i style="background:#ff4d6d"></i><i style="background:#ff9a3a"></i><i style="background:#ffd23f"></i><i style="background:#3ddc84"></i><i style="background:#39c9ff"></i><i style="background:#5b6cff"></i></div>
+  <h1 translate="no">BLOCKWERK</h1>
+  <p class="sub" id="sub"></p>
+  <div class="card">
+    <input type="text" name="username" value="blockwerk" autocomplete="username" hidden>
+    <input type="password" id="pw" autocomplete="current-password" required>
+    <label><input type="checkbox" id="keep" checked><span id="keepT"></span></label>
+    <button id="go"></button>
+    <div class="err" id="err" role="alert"></div>
+  </div>
+</form>
+<script>
+'use strict';
+(() => {
+  // filled in by deploy/build.mjs
+  const SALT = 'oMFnMNaqzTjYR18Nw7OnoQ==', ITER = 600000, BUILD = 'cfdb5e6-mw2dr1ty';
+  const KEY_STORE = 'blockwerk.sitekey'; // "stay signed in": the derived AES key (never the password), with its salt
+  const T = {
+    de: ['Geschlossene Alpha', 'Passwort', 'Angemeldet bleiben', 'Spielen', 'Falsches Passwort', 'Wird geöffnet …'],
+    en: ['Closed alpha', 'Password', 'Stay signed in', 'Play', 'Wrong password', 'Opening …'],
+    tr: ['Kapalı alfa', 'Şifre', 'Oturumu açık tut', 'Oyna', 'Yanlış şifre', 'Açılıyor …'],
+    es: ['Alfa cerrada', 'Contraseña', 'Mantener la sesión', 'Jugar', 'Contraseña incorrecta', 'Abriendo …'],
+    fr: ['Alpha fermée', 'Mot de passe', 'Rester connecté', 'Jouer', 'Mot de passe incorrect', 'Ouverture …'],
+    pt: ['Alfa fechado', 'Senha', 'Manter conectado', 'Jogar', 'Senha incorreta', 'Abrindo …'],
+    it: ['Alpha chiusa', 'Password', 'Resta connesso', 'Gioca', 'Password errata', 'Apertura …'],
+    pl: ['Zamknięta alfa', 'Hasło', 'Nie wylogowuj mnie', 'Graj', 'Złe hasło', 'Otwieranie …'],
+    ru: ['Закрытая альфа', 'Пароль', 'Оставаться в системе', 'Играть', 'Неверный пароль', 'Открываю …'],
+    id: ['Alfa tertutup', 'Kata sandi', 'Tetap masuk', 'Main', 'Kata sandi salah', 'Membuka …'],
+    ar: ['نسخة ألفا مغلقة', 'كلمة المرور', 'ابقَ مسجلًا', 'العب', 'كلمة مرور خاطئة', 'جارٍ الفتح …'],
+  };
+  // same language the game would use: the player's choice, else the device language, else German
+  let code = 'de';
+  try { code = localStorage.getItem('blockwerk.lang') || (localStorage.getItem('blockwerk.save.v1') ? 'de' : ''); } catch (e) {}
+  if (!T[code]) code = (navigator.languages || [navigator.language]).map(l => String(l).slice(0, 2).toLowerCase()).find(l => T[l]) || 'de';
+  const L = T[code], $ = id => document.getElementById(id);
+  document.documentElement.lang = code; if (code === 'ar') document.documentElement.dir = 'rtl';
+  $('sub').textContent = L[0]; $('pw').placeholder = L[1]; $('pw').setAttribute('aria-label', L[1]);
+  $('keepT').textContent = L[2]; $('go').textContent = L[3];
+
+  const enc = new TextEncoder(), sub = crypto.subtle;
+  const b64 = { to: b => btoa(String.fromCharCode(...new Uint8Array(b))), from: s => Uint8Array.from(atob(s), c => c.charCodeAt(0)) };
+  const derive = async pw => {
+    const base = await sub.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveKey']);
+    return sub.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64.from(SALT), iterations: ITER }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  };
+  // each file is iv(12 bytes) + AES-GCM ciphertext with tag; a wrong key fails the tag check
+  const open = async (key, path) => {
+    const r = await fetch(path + '.enc?v=' + BUILD);
+    if (!r.ok) throw new Error('http ' + r.status);
+    const buf = new Uint8Array(await r.arrayBuffer());
+    return sub.decrypt({ name: 'AES-GCM', iv: buf.slice(0, 12) }, key, buf.slice(12));
+  };
+  async function start(key, keep) {
+    const html = new TextDecoder().decode(await open(key, 'index.html')); // throws on a wrong key
+    if (keep) try { localStorage.setItem(KEY_STORE, JSON.stringify({ salt: SALT, key: b64.to(await sub.exportKey('raw', key)) })); } catch (e) {}
+    // the game loads audio and language files through this (see assetFetch in the game)
+    window.BW_ASSETS = { fetch: url => open(key, url.split('?')[0]).then(b => new Response(b, { status: 200 })) };
+    document.open(); document.write(html); document.close();
+  }
+  async function stored() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY_STORE) || 'null');
+      if (!s || s.salt !== SALT) return null;
+      return await sub.importKey('raw', b64.from(s.key), 'AES-GCM', false, ['decrypt']);
+    } catch (e) { return null; }
+  }
+  (async () => {
+    const k = await stored();
+    if (k) { try { await start(k, false); return; } catch (e) { localStorage.removeItem(KEY_STORE); } }
+    document.body.hidden = false; $('pw').focus();
+  })();
+  document.body.hidden = true;
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const pw = $('pw').value; if (!pw) return;
+    $('go').disabled = true; $('go').textContent = L[5]; $('err').textContent = '';
+    try {
+      const key = await derive(pw);
+      await start(key, $('keep').checked);
+    } catch (e) {
+      $('go').disabled = false; $('go').textContent = L[3]; $('err').textContent = L[4];
+      $('f').classList.remove('shake'); void $('f').offsetWidth; $('f').classList.add('shake'); $('pw').select();
+    }
+  });
+})();
+</script>
+</body>
+</html>
